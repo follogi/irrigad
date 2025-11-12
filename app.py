@@ -45,7 +45,7 @@ CORS(app)
 # Configuration
 UPLOAD_FOLDER = 'data/uploads'
 ALLOWED_EXTENSIONS = {'csv', 'json'}
-MAX_FILE_SIZE = 16 * 1024 * 1024  # 16MB
+MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB (increased for large CSV files)
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
@@ -419,6 +419,15 @@ def health():
         'data_loaded': data_store['loader'] is not None,
         'model_trained': data_store['trained']
     })
+
+
+@app.errorhandler(413)
+def request_entity_too_large(error):
+    """Handle file too large error"""
+    return jsonify({
+        'success': False,
+        'error': f'File troppo grande. Dimensione massima consentita: {MAX_FILE_SIZE / (1024 * 1024):.0f}MB. Riduci la dimensione del file o contatta il supporto.'
+    }), 413
 
 
 if __name__ == '__main__':
