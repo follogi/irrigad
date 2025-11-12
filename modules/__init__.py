@@ -1,4 +1,4 @@
 """
-Bluetentacles AI - Irrigation Optimization System
+AI - Irrigation Optimization System
 Modules package
 """

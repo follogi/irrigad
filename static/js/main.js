@@ -1,5 +1,5 @@
 /**
- * Bluetentacles AI - Irrigation Optimization System
+ * AI - Irrigation Optimization System
  * Frontend Logic
  */
 
@@ -17,7 +17,7 @@ let appState = {
 
 // DOM Ready
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('Bluetentacles AI - Frontend Initialized');
+    console.log('Irrigad AI - Frontend Initialized');
 
     // Setup event listeners
     setupEventListeners();

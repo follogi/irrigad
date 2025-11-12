@@ -1,4 +1,4 @@
-# Bluetentacles AI - Irrigation Optimization System
+# AI - Irrigation Optimization System
 
 Sistema intelligente per l'ottimizzazione dell'irrigazione basato su Machine Learning e regole agronomiche FAO-56.
 
@@ -31,8 +31,8 @@ Sistema intelligente per l'ottimizzazione dell'irrigazione basato su Machine Lea
 
 ```bash
 # Clona il repository
-git clone https://github.com/your-org/bluetentacles-ai.git
-cd bluetentacles-ai
+git clone https://github.com/your-org/irrigad-ai.git
+cd irrigad-ai
 
 # Installa dipendenze
 pip install -r requirements.txt
@@ -60,7 +60,7 @@ L'applicazione sarà disponibile su: **http://localhost:5000**
 ## Struttura Progetto
 
 ```
-bluetentacles-ai/
+irrigad-ai/
 ├── app.py                          # Flask application
 ├── requirements.txt                # Python dependencies
 ├── README.md                       # Documentation
@@ -495,7 +495,7 @@ MIT License - Vedi file LICENSE per dettagli
 
 ## Autori
 
-**Bluetentacles Team**
+**Irrigad Team**
 
 - Machine Learning: Claude AI
 - Agronomic Consulting: FAO-56 Guidelines
@@ -506,9 +506,9 @@ MIT License - Vedi file LICENSE per dettagli
 ## Contatti
 
 Per supporto o domande:
-- Email: support@bluetentacles.ai
-- GitHub: https://github.com/bluetentacles/irrigation-ai
-- Website: https://bluetentacles.ai
+- Email: support@irrigad.ai
+- GitHub: https://github.com/irrigad/irrigation-ai
+- Website: https://irrigad.ai
 
 ---
 
@@ -521,4 +521,4 @@ Per supporto o domande:
 
 ---
 
-**Bluetentacles AI v1.0** - Ottimizzazione Intelligente dell'Irrigazione
+**AI v1.0** - Ottimizzazione Intelligente dell'Irrigazione

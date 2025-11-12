@@ -1,5 +1,5 @@
 """
-Bluetentacles AI - Irrigation Optimization System
+AI - Irrigation Optimization System
 Flask Application
 """
 
@@ -39,7 +39,7 @@ def convert_numpy_types(obj):
 
 # Initialize Flask app
 app = Flask(__name__)
-app.secret_key = 'bluetentacles-ai-secret-key-2025'  # Change in production
+app.secret_key = 'irrigad-ai-secret-key-2025'  # Change in production
 CORS(app)
 
 # Configuration
@@ -423,7 +423,7 @@ def health():
 
 if __name__ == '__main__':
     print("=" * 60)
-    print("🌱 BLUETENTACLES AI - Irrigation Optimization System")
+    print("AI - Irrigation Optimization System")
     print("=" * 60)
     print(f"Server starting on http://localhost:5000")
     print("Upload your data files to get started!")
