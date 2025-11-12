@@ -235,17 +235,25 @@ class FeatureEngineer:
                                          merged_df: pd.DataFrame) -> pd.DataFrame:
         """
         Simulate forecast features for training using actual future weather data
+        with realistic forecast errors.
 
         For each training sample, we look at the ACTUAL weather data from the
-        next 3 days and use it as "forecast" data. This ensures the model learns
-        with the same features it will receive during prediction.
+        next 3 days and use it as "forecast" data, BUT we add realistic noise
+        to simulate forecast inaccuracy. This ensures the model learns that
+        forecast features are INFORMATIVE but not PERFECT.
+
+        Realistic forecast errors (based on meteorological accuracy):
+        - Precipitation: ±30% or ±5mm (whichever is larger)
+        - Temperature: ±2°C
+        - ET0: ±20%
+        - Humidity/VPD: ±10%
 
         Args:
             train_df: Training dataframe with historical features
             merged_df: Full merged data with weather information
 
         Returns:
-            Training dataframe with added forecast features
+            Training dataframe with added forecast features (with realistic noise)
         """
         # Initialize forecast feature columns
         train_df['forecast_precipitation_3d'] = 0.0
@@ -272,38 +280,66 @@ class FeatureEngineer:
             next_3_days = merged_df.iloc[current_idx + 1:current_idx + 4]
 
             if len(next_3_days) >= 1:  # At least 1 day ahead
-                # Sum precipitation over next 3 days
+                # Sum precipitation over next 3 days + REALISTIC ERROR
                 if 'precipitation' in next_3_days.columns:
-                    train_df.loc[idx, 'forecast_precipitation_3d'] = \
-                        next_3_days['precipitation'].fillna(0).sum()
+                    actual_precip = next_3_days['precipitation'].fillna(0).sum()
+                    # Add ±30% error or ±5mm (whichever is larger)
+                    error_pct = np.random.uniform(-0.3, 0.3)
+                    error_mm = max(abs(actual_precip * error_pct), np.random.uniform(-5, 5))
+                    forecast_precip = max(0, actual_precip + error_mm)
+                    train_df.loc[idx, 'forecast_precipitation_3d'] = forecast_precip
 
-                # Calculate ET0 from temperature (simplified FAO-56 approximation)
-                # ET0 ≈ 0.0023 * (Tmean + 17.8) * sqrt(Tmax - Tmin) * Ra
-                # Simplified: ET0 ≈ 0.15 * Tmean (rough approximation for training)
+                # Calculate ET0 from temperature + REALISTIC ERROR
                 if 'airtemperaturemean' in next_3_days.columns:
                     temp_mean = next_3_days['airtemperaturemean'].fillna(15)
+                    # Add ±2°C temperature error
+                    temp_error = np.random.uniform(-2, 2)
+                    temp_with_error = temp_mean + temp_error
                     # Rough ET0 estimation: ~0.15-0.20 mm/day per degree above 10°C
-                    et0_daily = (temp_mean - 10) * 0.2
+                    et0_daily = (temp_with_error - 10) * 0.2
                     et0_daily = et0_daily.clip(lower=0)  # No negative ET0
-                    train_df.loc[idx, 'forecast_et0_3d'] = et0_daily.sum()
+                    actual_et0 = et0_daily.sum()
+                    # Add ±20% ET0 error
+                    et0_error = np.random.uniform(-0.2, 0.2)
+                    forecast_et0 = max(0, actual_et0 * (1 + et0_error))
+                    train_df.loc[idx, 'forecast_et0_3d'] = forecast_et0
 
-                # Max VPD (rough approximation from humidity and temperature)
+                # Max VPD + REALISTIC ERROR
                 if 'relativehumiditymean' in next_3_days.columns:
                     # VPD approximation (simplified)
                     rh = next_3_days['relativehumiditymean'].fillna(70)
-                    vpd_approx = (100 - rh) / 10.0  # Rough estimate
+                    # Add ±10% humidity error
+                    rh_error = np.random.uniform(-10, 10)
+                    rh_with_error = (rh + rh_error).clip(0, 100)
+                    vpd_approx = (100 - rh_with_error) / 10.0  # Rough estimate
                     train_df.loc[idx, 'forecast_vpd_max'] = vpd_approx.max()
 
-                # Min temperature
+                # Min temperature + REALISTIC ERROR
                 if 'airtemperaturemean' in next_3_days.columns:
                     # Use mean temp as proxy for min (we don't have actual min/max in data)
-                    train_df.loc[idx, 'forecast_temp_min'] = \
-                        next_3_days['airtemperaturemean'].fillna(10).min() - 5
+                    actual_temp_min = next_3_days['airtemperaturemean'].fillna(10).min() - 5
+                    # Add ±2°C error
+                    temp_error = np.random.uniform(-2, 2)
+                    train_df.loc[idx, 'forecast_temp_min'] = actual_temp_min + temp_error
 
                 # Water deficit
                 train_df.loc[idx, 'water_deficit'] = \
                     train_df.loc[idx, 'forecast_et0_3d'] - \
                     train_df.loc[idx, 'forecast_precipitation_3d']
+
+        # Log forecast feature statistics to verify variance
+        forecast_cols = ['forecast_precipitation_3d', 'forecast_et0_3d',
+                        'forecast_vpd_max', 'forecast_temp_min', 'water_deficit']
+        print(f"\n{'='*60}")
+        print(f"FORECAST FEATURES STATISTICS (with realistic errors):")
+        for col in forecast_cols:
+            if col in train_df.columns:
+                mean_val = train_df[col].mean()
+                std_val = train_df[col].std()
+                min_val = train_df[col].min()
+                max_val = train_df[col].max()
+                print(f"  {col:30s}: mean={mean_val:6.2f}, std={std_val:6.2f}, min={min_val:6.2f}, max={max_val:6.2f}")
+        print(f"{'='*60}\n")
 
         return train_df
 
