@@ -18,6 +18,25 @@ from modules.feature_engineering import FeatureEngineer
 from modules.ml_model import MLPredictor
 from modules.rule_based import RuleBasedPredictor
 
+
+def convert_numpy_types(obj):
+    """
+    Convert numpy types to native Python types for JSON serialization
+    """
+    if isinstance(obj, np.integer):
+        return int(obj)
+    elif isinstance(obj, np.floating):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    elif isinstance(obj, (np.bool_, bool)):
+        return bool(obj)
+    elif isinstance(obj, dict):
+        return {key: convert_numpy_types(value) for key, value in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_numpy_types(item) for item in obj]
+    return obj
+
 # Initialize Flask app
 app = Flask(__name__)
 app.secret_key = 'bluetentacles-ai-secret-key-2025'  # Change in production
@@ -197,14 +216,20 @@ def train_model():
         # Determine if ML model is reliable
         use_ml = ml_model.is_model_reliable()
 
-        return jsonify({
+        # Convert feature importance to native Python types
+        feature_importance_list = ml_model.feature_importance.head(10).to_dict('records')
+        feature_importance_list = convert_numpy_types(feature_importance_list)
+
+        response_data = {
             'success': True,
             'message': 'Modello trainato con successo!',
-            'training_metrics': training_metrics,
-            'use_ml': use_ml,
+            'training_metrics': convert_numpy_types(training_metrics),
+            'use_ml': bool(use_ml),
             'model_type': 'RandomForest' if use_ml else 'Rule-Based',
-            'feature_importance': ml_model.feature_importance.head(10).to_dict('records')
-        })
+            'feature_importance': feature_importance_list
+        }
+
+        return jsonify(response_data)
 
     except Exception as e:
         import traceback
@@ -299,6 +324,9 @@ def predict():
             }
         }
 
+        # Convert numpy types to native Python types
+        response = convert_numpy_types(response)
+
         return jsonify(response)
 
     except Exception as e:
@@ -360,13 +388,18 @@ def analytics():
             fi = data_store['ml_model'].feature_importance.head(10)
             feature_importance_data = fi.to_dict('records')
 
-        return jsonify({
+        response_data = {
             'success': True,
             'soil_moisture_trend': sm_trend,
             'irrigation_history': irrigation_history,
             'weather_data': weather_data,
             'feature_importance': feature_importance_data
-        })
+        }
+
+        # Convert numpy types to native Python types
+        response_data = convert_numpy_types(response_data)
+
+        return jsonify(response_data)
 
     except Exception as e:
         import traceback
