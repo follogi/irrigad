@@ -84,6 +84,11 @@ async function handleUpload(event) {
                 statusDiv.querySelector('.alert').innerHTML += summaryHtml;
             }
 
+            // Show cleaning report
+            if (result.cleaning_report) {
+                displayCleaningReport(result.cleaning_report);
+            }
+
             // Update state
             appState.filesUploaded = true;
 
@@ -584,4 +589,38 @@ function getPriorityBadgeClass(priority) {
         default:
             return 'bg-secondary';
     }
+}
+
+/**
+ * Display data cleaning report
+ */
+function displayCleaningReport(report) {
+    // Populate valve data
+    document.getElementById('valve-outliers').textContent = report.valve.outliers;
+    document.getElementById('variance-reduction').textContent = report.valve.variance_reduction;
+    document.getElementById('valve-negative').textContent = report.valve.negative_values || 0;
+    document.getElementById('valve-high').textContent = report.valve.too_high_values || 0;
+
+    // Populate soil moisture data
+    document.getElementById('sm-outliers').textContent = report.sm.outliers;
+    const smSensors = report.sm.sensors_cleaned || [];
+    document.getElementById('sm-sensors').textContent = smSensors.length > 0 ? smSensors.join(', ') : 'nessuno';
+
+    // Populate meteo data
+    document.getElementById('meteo-outliers').textContent = report.meteo.outliers;
+    const meteoSensors = report.meteo.sensors_cleaned || [];
+    document.getElementById('meteo-sensors').textContent = meteoSensors.length > 0 ? meteoSensors.join(', ') : 'nessuno';
+
+    // Total outliers
+    document.getElementById('total-outliers').textContent = report.total_outliers_removed;
+
+    // Show warning if many outliers
+    if (report.total_outliers_removed > 50) {
+        document.getElementById('cleaning-warning').style.display = 'block';
+    } else {
+        document.getElementById('cleaning-warning').style.display = 'none';
+    }
+
+    // Show the cleaning report section
+    document.getElementById('cleaning-report').style.display = 'block';
 }

@@ -104,6 +104,57 @@
 
                         <!-- Progress/Status -->
                         <div id="upload-status" class="mt-3"></div>
+
+                        <!-- Data Cleaning Report (hidden initially) -->
+                        <div id="cleaning-report" class="alert alert-info mt-3" style="display:none;">
+                            <h5><i class="bi bi-stars me-2"></i>Pulizia Dati Completata</h5>
+                            <div class="row g-3 mt-2">
+                                <div class="col-md-4">
+                                    <div class="card bg-light">
+                                        <div class="card-body">
+                                            <h6 class="card-title">💧 Irrigazione (valve)</h6>
+                                            <p class="mb-1"><strong><span id="valve-outliers">0</span></strong> outliers rimossi</p>
+                                            <small class="text-muted">
+                                                Varianza ridotta: <strong><span id="variance-reduction">0%</span></strong><br>
+                                                Negativi: <span id="valve-negative">0</span> |
+                                                Troppo alti: <span id="valve-high">0</span>
+                                            </small>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="card bg-light">
+                                        <div class="card-body">
+                                            <h6 class="card-title">🌱 Umidità Suolo (sm)</h6>
+                                            <p class="mb-1"><strong><span id="sm-outliers">0</span></strong> outliers rimossi</p>
+                                            <small class="text-muted">
+                                                Sensori puliti: <span id="sm-sensors">-</span>
+                                            </small>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="card bg-light">
+                                        <div class="card-body">
+                                            <h6 class="card-title">🌤️ Meteo</h6>
+                                            <p class="mb-1"><strong><span id="meteo-outliers">0</span></strong> outliers rimossi</p>
+                                            <small class="text-muted">
+                                                Sensori puliti: <span id="meteo-sensors">-</span>
+                                            </small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <hr>
+                            <p class="mb-0">
+                                <i class="bi bi-check-circle-fill text-success me-2"></i>
+                                <strong>Totale: <span id="total-outliers">0</span> valori anomali corretti automaticamente</strong>
+                            </p>
+                            <div id="cleaning-warning" class="alert alert-warning mt-2" style="display:none;">
+                                <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                                <strong>Attenzione:</strong> Trovati molti valori anomali. Verifica qualità sensori.
+                            </div>
+                        </div>
                     </form>
                 </div>
             </div>

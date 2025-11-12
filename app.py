@@ -17,6 +17,7 @@ from modules.data_loader import DataLoader
 from modules.feature_engineering import FeatureEngineer
 from modules.ml_model import MLPredictor
 from modules.rule_based import RuleBasedPredictor
+from modules.data_cleaning import DataCleaner
 
 
 def convert_numpy_types(obj):
@@ -146,17 +147,43 @@ def upload_files():
                 'errors': errors
             }), 400
 
-        # Store loader in global storage
+        # DATA CLEANING - Pulisci outliers e anomalie
+        cleaner = DataCleaner()
+        loader.valve_df, loader.sm_df, loader.meteo_df, cleaning_report = cleaner.clean_all_data(
+            valve_df=loader.valve_df,
+            sm_df=loader.sm_df,
+            meteo_df=loader.meteo_df
+        )
+
+        # Store loader in global storage (con dati puliti)
         data_store['loader'] = loader
         data_store['trained'] = False
 
         # Get summary
         summary = loader.get_summary()
 
+        # Build response with cleaning report
         return jsonify({
             'success': True,
-            'message': 'File caricati e validati con successo!',
-            'summary': summary
+            'message': 'File caricati, validati e puliti con successo!',
+            'summary': summary,
+            'cleaning_report': {
+                'total_outliers_removed': cleaning_report['summary']['total_outliers'],
+                'valve': {
+                    'outliers': cleaning_report['summary']['valve_outliers'],
+                    'variance_reduction': f"{cleaning_report['details']['valve'].get('variance_reduction_pct', 0):.1f}%",
+                    'negative_values': cleaning_report['details']['valve'].get('negative_values', 0),
+                    'too_high_values': cleaning_report['details']['valve'].get('too_high_values', 0)
+                },
+                'sm': {
+                    'outliers': cleaning_report['summary']['sm_outliers'],
+                    'sensors_cleaned': cleaning_report['details']['sm'].get('sensors_checked', [])
+                },
+                'meteo': {
+                    'outliers': cleaning_report['summary']['meteo_outliers'],
+                    'sensors_cleaned': list(cleaning_report['details']['meteo'].get('outliers_by_sensor', {}).keys())
+                }
+            }
         })
 
     except Exception as e:
