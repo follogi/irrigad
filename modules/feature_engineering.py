@@ -231,9 +231,91 @@ class FeatureEngineer:
 
         return features
 
-    def prepare_training_data(self) -> Tuple[pd.DataFrame, pd.Series]:
+    def _add_simulated_forecast_features(self, train_df: pd.DataFrame,
+                                         merged_df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Simulate forecast features for training using actual future weather data
+
+        For each training sample, we look at the ACTUAL weather data from the
+        next 3 days and use it as "forecast" data. This ensures the model learns
+        with the same features it will receive during prediction.
+
+        Args:
+            train_df: Training dataframe with historical features
+            merged_df: Full merged data with weather information
+
+        Returns:
+            Training dataframe with added forecast features
+        """
+        # Initialize forecast feature columns
+        train_df['forecast_precipitation_3d'] = 0.0
+        train_df['forecast_et0_3d'] = 0.0
+        train_df['forecast_vpd_max'] = 0.0
+        train_df['forecast_temp_min'] = 10.0
+        train_df['water_deficit'] = 0.0
+
+        # For each training sample, simulate forecast using next 3 days actual data
+        for idx in train_df.index:
+            if 'date' not in train_df.columns:
+                continue
+
+            current_date = train_df.loc[idx, 'date']
+
+            # Find corresponding date in merged_df
+            date_mask = merged_df['day'] == current_date
+            if not date_mask.any():
+                continue
+
+            current_idx = merged_df[date_mask].index[0]
+
+            # Get next 3 days of actual weather data (simulate "forecast")
+            next_3_days = merged_df.iloc[current_idx + 1:current_idx + 4]
+
+            if len(next_3_days) >= 1:  # At least 1 day ahead
+                # Sum precipitation over next 3 days
+                if 'precipitation' in next_3_days.columns:
+                    train_df.loc[idx, 'forecast_precipitation_3d'] = \
+                        next_3_days['precipitation'].fillna(0).sum()
+
+                # Calculate ET0 from temperature (simplified FAO-56 approximation)
+                # ET0 ≈ 0.0023 * (Tmean + 17.8) * sqrt(Tmax - Tmin) * Ra
+                # Simplified: ET0 ≈ 0.15 * Tmean (rough approximation for training)
+                if 'airtemperaturemean' in next_3_days.columns:
+                    temp_mean = next_3_days['airtemperaturemean'].fillna(15)
+                    # Rough ET0 estimation: ~0.15-0.20 mm/day per degree above 10°C
+                    et0_daily = (temp_mean - 10) * 0.2
+                    et0_daily = et0_daily.clip(lower=0)  # No negative ET0
+                    train_df.loc[idx, 'forecast_et0_3d'] = et0_daily.sum()
+
+                # Max VPD (rough approximation from humidity and temperature)
+                if 'relativehumiditymean' in next_3_days.columns:
+                    # VPD approximation (simplified)
+                    rh = next_3_days['relativehumiditymean'].fillna(70)
+                    vpd_approx = (100 - rh) / 10.0  # Rough estimate
+                    train_df.loc[idx, 'forecast_vpd_max'] = vpd_approx.max()
+
+                # Min temperature
+                if 'airtemperaturemean' in next_3_days.columns:
+                    # Use mean temp as proxy for min (we don't have actual min/max in data)
+                    train_df.loc[idx, 'forecast_temp_min'] = \
+                        next_3_days['airtemperaturemean'].fillna(10).min() - 5
+
+                # Water deficit
+                train_df.loc[idx, 'water_deficit'] = \
+                    train_df.loc[idx, 'forecast_et0_3d'] - \
+                    train_df.loc[idx, 'forecast_precipitation_3d']
+
+        return train_df
+
+    def prepare_training_data(self, merged_df: pd.DataFrame = None) -> Tuple[pd.DataFrame, pd.Series]:
         """
         Prepare training data (features and target)
+
+        IMPORTANT: Simulates forecast features using actual future weather data
+        to ensure training features match prediction features.
+
+        Args:
+            merged_df: Merged daily sensor data (needed to simulate forecast features)
 
         Returns:
             Tuple of (X: features DataFrame, y: target Series)
@@ -243,6 +325,11 @@ class FeatureEngineer:
 
         # Remove rows without target
         train_df = self.features_df[self.features_df['target'].notna()].copy()
+
+        # SIMULATE FORECAST FEATURES using actual future weather data
+        # This ensures training features match prediction features exactly
+        if merged_df is not None:
+            train_df = self._add_simulated_forecast_features(train_df, merged_df)
 
         # Drop non-feature columns
         feature_cols = [col for col in train_df.columns
