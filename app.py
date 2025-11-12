@@ -222,8 +222,15 @@ def train_model():
         feature_engineer = FeatureEngineer()
         features_df = feature_engineer.extract_features(merged_df)
 
-        # Prepare training data
-        X, y = feature_engineer.prepare_training_data()
+        # Prepare training data WITH simulated forecast features
+        # This ensures training features match prediction features exactly
+        X, y = feature_engineer.prepare_training_data(merged_df)
+
+        # Log feature information for debugging
+        print(f"\n{'='*60}")
+        print(f"TRAINING - Feature count: {len(X.columns)}")
+        print(f"Feature names: {list(X.columns)}")
+        print(f"{'='*60}\n")
 
         if len(X) < 30:
             return jsonify({
@@ -292,6 +299,12 @@ def predict():
 
         # Prepare features for prediction
         features = feature_engineer.prepare_prediction_features(merged_df, forecast_data)
+
+        # Log feature information for debugging
+        print(f"\n{'='*60}")
+        print(f"PREDICTION - Feature count: {len(features)}")
+        print(f"Feature names: {list(features.index)}")
+        print(f"{'='*60}\n")
 
         # Decide which model to use
         use_ml = ml_model.is_model_reliable()
