@@ -277,6 +277,11 @@ function displayPredictionResults(result) {
     if (result.feature_importance) {
         renderFeatureImportanceChart(result.feature_importance);
     }
+
+    // Debug information
+    if (result.debug) {
+        displayDebugInfo(result.debug);
+    }
 }
 
 /**
@@ -623,4 +628,63 @@ function displayCleaningReport(report) {
 
     // Show the cleaning report section
     document.getElementById('cleaning-report').style.display = 'block';
+}
+
+/**
+ * Display debug information
+ */
+function displayDebugInfo(debug) {
+    if (!debug) return;
+
+    // Show debug panel
+    const debugPanel = document.getElementById('debug-panel');
+    debugPanel.style.display = 'block';
+
+    // Sanity status
+    const sanityStatus = document.getElementById('sanity-status');
+    if (debug.sanity_check) {
+        sanityStatus.innerHTML = '<span class="badge bg-success">✓ PASS</span>';
+    } else {
+        sanityStatus.innerHTML = '<span class="badge bg-danger">✗ FAIL - Predizione non plausibile</span>';
+    }
+
+    // Warnings
+    if (debug.warnings && debug.warnings.length > 0) {
+        document.getElementById('debug-warnings-section').style.display = 'block';
+        const warningsList = document.getElementById('debug-warnings');
+        warningsList.innerHTML = '';
+        debug.warnings.forEach(w => {
+            const emoji = w.level === 'critical' ? '🔴' : (w.level === 'warning' ? '🟡' : 'ℹ️');
+            const li = document.createElement('li');
+            li.innerHTML = `${emoji} <strong>[${w.level.toUpperCase()}]</strong> ${w.message}`;
+            if (w.level === 'critical') {
+                li.style.color = '#C62828';
+                li.style.fontWeight = 'bold';
+            }
+            warningsList.appendChild(li);
+        });
+    } else {
+        document.getElementById('debug-warnings-section').style.display = 'none';
+    }
+
+    // Recommendations
+    if (debug.recommendations && debug.recommendations.length > 0) {
+        document.getElementById('debug-recommendations-section').style.display = 'block';
+        const recList = document.getElementById('debug-recommendations');
+        recList.innerHTML = '';
+        debug.recommendations.forEach(r => {
+            const li = document.createElement('li');
+            li.innerHTML = `<strong>${r.action}:</strong> ${r.details}`;
+            recList.appendChild(li);
+        });
+    } else {
+        document.getElementById('debug-recommendations-section').style.display = 'none';
+    }
+
+    // Detailed info (for collapsed sections)
+    if (debug.checks) {
+        document.getElementById('debug-features').textContent = JSON.stringify(debug.checks.features || {}, null, 2);
+        document.getElementById('debug-forecast').textContent = JSON.stringify(debug.checks.forecast || {}, null, 2);
+        document.getElementById('debug-full').textContent = JSON.stringify(debug, null, 2);
+    }
 }

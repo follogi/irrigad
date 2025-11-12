@@ -18,6 +18,7 @@ from modules.feature_engineering import FeatureEngineer
 from modules.ml_model import MLPredictor
 from modules.rule_based import RuleBasedPredictor
 from modules.data_cleaning import DataCleaner
+from modules.ml_debugger import MLDebugger
 
 
 def convert_numpy_types(obj):
@@ -324,6 +325,25 @@ def predict():
             'end': forecast_data['daily']['time'][-1]
         }
 
+        # DEBUG PREDIZIONE - Analisi problemi ML
+        debugger = MLDebugger()
+
+        # Converti features Series in dict
+        features_dict = features.to_dict() if hasattr(features, 'to_dict') else dict(features)
+
+        # Esegui debug
+        debug_report = debugger.debug_prediction(
+            features=features_dict,
+            forecast_data=forecast_data,
+            model=ml_model.model if use_ml else None,
+            model_type=model_used,
+            prediction=result['water_mm'],
+            r2_score=training_metrics.get('r2_score', None) if use_ml else None
+        )
+
+        # Stampa report su console (backend)
+        debugger.print_debug_report(debug_report)
+
         # Build complete response
         response = {
             'success': True,
@@ -348,6 +368,14 @@ def predict():
                 'forecast_period': forecast_period,
                 'algorithm_version': '1.0.0',
                 'model_type': model_used
+            },
+            # Aggiungi debug info
+            'debug': {
+                'warnings': debug_report['warnings'],
+                'recommendations': debug_report['recommendations'],
+                'sanity_check': debug_report['checks']['sanity']['is_sane'],
+                'forecast_included': debug_report['checks']['features']['forecast_features_included'],
+                'checks': debug_report['checks']
             }
         }
 

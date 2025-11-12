@@ -314,6 +314,50 @@
                 </div>
             </div>
 
+            <!-- Debug Panel (hidden initially) -->
+            <div id="debug-panel" class="card shadow-sm mt-4" style="display:none;">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0"><i class="bi bi-bug me-2"></i>Debug Info - Analisi Predizione</h5>
+                </div>
+                <div class="card-body">
+                    <!-- Sanity Check Summary -->
+                    <div id="debug-sanity" class="mb-3">
+                        <strong>Sanity Check:</strong> <span id="sanity-status">--</span>
+                    </div>
+
+                    <!-- Warnings -->
+                    <div id="debug-warnings-section" style="display:none;">
+                        <h6 class="text-warning"><i class="bi bi-exclamation-triangle-fill me-2"></i>Avvisi</h6>
+                        <ul id="debug-warnings" class="mb-3"></ul>
+                    </div>
+
+                    <!-- Recommendations -->
+                    <div id="debug-recommendations-section" style="display:none;">
+                        <h6 class="text-info"><i class="bi bi-lightbulb-fill me-2"></i>Raccomandazioni</h6>
+                        <ol id="debug-recommendations" class="mb-3"></ol>
+                    </div>
+
+                    <!-- Toggle detailed info -->
+                    <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#debug-details-collapse">
+                        <i class="bi bi-code-square me-1"></i>Mostra Dettagli Completi
+                    </button>
+
+                    <!-- Detailed debug info (collapsed) -->
+                    <div class="collapse mt-3" id="debug-details-collapse">
+                        <div class="card card-body bg-light">
+                            <h6>Features Check:</h6>
+                            <pre id="debug-features" style="max-height:200px; overflow-y:auto; font-size:0.85em;"></pre>
+
+                            <h6 class="mt-3">Forecast Impact:</h6>
+                            <pre id="debug-forecast" style="max-height:200px; overflow-y:auto; font-size:0.85em;"></pre>
+
+                            <h6 class="mt-3">Full Report (JSON):</h6>
+                            <pre id="debug-full" style="max-height:400px; overflow-y:auto; font-size:0.75em;"></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
         </section>
 
     </div>
