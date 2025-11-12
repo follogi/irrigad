@@ -1,0 +1,399 @@
+"""
+Bluetentacles AI - Irrigation Optimization System
+Flask Application
+"""
+
+from flask import Flask, render_template, request, jsonify, session
+from flask_cors import CORS
+from werkzeug.utils import secure_filename
+import os
+import json
+from datetime import datetime
+import pandas as pd
+import numpy as np
+
+# Import custom modules
+from modules.data_loader import DataLoader
+from modules.feature_engineering import FeatureEngineer
+from modules.ml_model import MLPredictor
+from modules.rule_based import RuleBasedPredictor
+
+# Initialize Flask app
+app = Flask(__name__)
+app.secret_key = 'bluetentacles-ai-secret-key-2025'  # Change in production
+CORS(app)
+
+# Configuration
+UPLOAD_FOLDER = 'data/uploads'
+ALLOWED_EXTENSIONS = {'csv', 'json'}
+MAX_FILE_SIZE = 16 * 1024 * 1024  # 16MB
+
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE
+
+# Ensure upload folder exists
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# Global storage for data (in production use database or cache)
+data_store = {
+    'loader': None,
+    'ml_model': None,
+    'feature_engineer': None,
+    'rule_based': None,
+    'trained': False
+}
+
+
+def allowed_file(filename):
+    """Check if file extension is allowed"""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+@app.route('/')
+def index():
+    """Render main page"""
+    return render_template('index.html')
+
+
+@app.route('/upload', methods=['POST'])
+def upload_files():
+    """
+    Handle file uploads and validation
+
+    Expected files:
+    - sm.csv: Soil moisture sensors
+    - meteo.csv: Weather data
+    - valve.csv: Irrigation data
+    - previsioni.json: Weather forecast
+    """
+    try:
+        # Check if all files are present
+        required_files = ['sm', 'meteo', 'valve', 'previsioni']
+        files_data = {}
+
+        for file_key in required_files:
+            if file_key not in request.files:
+                return jsonify({
+                    'success': False,
+                    'error': f'File {file_key} mancante. Carica tutti i 4 file richiesti.'
+                }), 400
+
+            file = request.files[file_key]
+
+            if file.filename == '':
+                return jsonify({
+                    'success': False,
+                    'error': f'Nessun file selezionato per {file_key}'
+                }), 400
+
+            if not allowed_file(file.filename):
+                return jsonify({
+                    'success': False,
+                    'error': f'Estensione file non valida per {file_key}. Usa .csv o .json'
+                }), 400
+
+            # Save file
+            filename = secure_filename(f"{file_key}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{file.filename.rsplit('.', 1)[1].lower()}")
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+            files_data[file_key] = filepath
+
+        # Initialize DataLoader
+        loader = DataLoader()
+        all_errors = []
+
+        # Load CSV files
+        for file_type in ['sm', 'meteo', 'valve']:
+            success, errors = loader.load_csv(files_data[file_type], file_type)
+            if not success:
+                all_errors.extend(errors)
+
+        # Load JSON forecast
+        success, errors = loader.load_json(files_data['previsioni'])
+        if not success:
+            all_errors.extend(errors)
+
+        if all_errors:
+            return jsonify({
+                'success': False,
+                'errors': all_errors
+            }), 400
+
+        # Validate periods overlap
+        success, errors = loader.validate_periods()
+        if not success:
+            return jsonify({
+                'success': False,
+                'errors': errors
+            }), 400
+
+        # Store loader in global storage
+        data_store['loader'] = loader
+        data_store['trained'] = False
+
+        # Get summary
+        summary = loader.get_summary()
+
+        return jsonify({
+            'success': True,
+            'message': 'File caricati e validati con successo!',
+            'summary': summary
+        })
+
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': f'Errore durante upload: {str(e)}'
+        }), 500
+
+
+@app.route('/train', methods=['POST'])
+def train_model():
+    """
+    Train ML model on uploaded data
+    """
+    try:
+        # Check if data is loaded
+        if data_store['loader'] is None:
+            return jsonify({
+                'success': False,
+                'error': 'Nessun dato caricato. Carica i file prima di trainare.'
+            }), 400
+
+        loader = data_store['loader']
+
+        # Get merged data
+        merged_df = loader.get_merged_data()
+
+        if len(merged_df) < 30:
+            return jsonify({
+                'success': False,
+                'error': f'Dati insufficienti per training ({len(merged_df)} giorni). Minimo 30 giorni.'
+            }), 400
+
+        # Extract features
+        feature_engineer = FeatureEngineer()
+        features_df = feature_engineer.extract_features(merged_df)
+
+        # Prepare training data
+        X, y = feature_engineer.prepare_training_data()
+
+        if len(X) < 30:
+            return jsonify({
+                'success': False,
+                'error': f'Dati insufficienti dopo feature extraction ({len(X)} samples). Minimo 30.'
+            }), 400
+
+        # Train ML model
+        ml_model = MLPredictor()
+        training_metrics = ml_model.train(X, y)
+
+        # Store models
+        data_store['ml_model'] = ml_model
+        data_store['feature_engineer'] = feature_engineer
+        data_store['rule_based'] = RuleBasedPredictor()
+        data_store['trained'] = True
+
+        # Determine if ML model is reliable
+        use_ml = ml_model.is_model_reliable()
+
+        return jsonify({
+            'success': True,
+            'message': 'Modello trainato con successo!',
+            'training_metrics': training_metrics,
+            'use_ml': use_ml,
+            'model_type': 'RandomForest' if use_ml else 'Rule-Based',
+            'feature_importance': ml_model.feature_importance.head(10).to_dict('records')
+        })
+
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'error': f'Errore durante training: {str(e)}',
+            'traceback': traceback.format_exc()
+        }), 500
+
+
+@app.route('/predict', methods=['POST'])
+def predict():
+    """
+    Generate irrigation recommendation
+    """
+    try:
+        # Check if model is trained
+        if not data_store['trained']:
+            return jsonify({
+                'success': False,
+                'error': 'Modello non trainato. Esegui il training prima.'
+            }), 400
+
+        loader = data_store['loader']
+        ml_model = data_store['ml_model']
+        feature_engineer = data_store['feature_engineer']
+        rule_based = data_store['rule_based']
+
+        # Get merged data
+        merged_df = loader.get_merged_data()
+        forecast_data = loader.forecast_data
+
+        # Prepare features for prediction
+        features = feature_engineer.prepare_prediction_features(merged_df, forecast_data)
+
+        # Decide which model to use
+        use_ml = ml_model.is_model_reliable()
+
+        if use_ml:
+            # Use ML model
+            result = ml_model.predict(features, forecast_data, merged_df)
+            model_used = 'RandomForest'
+            training_metrics = ml_model.training_metrics
+        else:
+            # Use rule-based model
+            result = rule_based.predict(features, forecast_data)
+            model_used = 'Rule-Based FAO-56'
+            training_metrics = {
+                'r2_score': 0.0,
+                'mae_m3': 0.0,
+                'rmse_m3': 0.0,
+                'training_samples': len(merged_df),
+                'note': 'Using rule-based fallback'
+            }
+
+        # Add metadata
+        data_period = {
+            'start': merged_df['day'].min().strftime('%Y-%m-%d'),
+            'end': merged_df['day'].max().strftime('%Y-%m-%d'),
+            'days': len(merged_df)
+        }
+
+        forecast_period = {
+            'start': forecast_data['daily']['time'][0],
+            'end': forecast_data['daily']['time'][-1]
+        }
+
+        # Build complete response
+        response = {
+            'success': True,
+            'model_used': model_used,
+            'training_metrics': training_metrics,
+            'prediction': {
+                'water_m3': round(result['water_m3'], 1),
+                'water_mm': round(result['water_mm'], 2),
+                'water_liters_m2': round(result['water_mm'], 2),
+                'confidence': result['confidence'],
+                'priority': result['priority'],
+                'recommendation': result.get('recommendation', f"Irrigare con {result['water_mm']:.1f}mm")
+            },
+            'current_situation': result.get('current_situation', {}),
+            'forecast_3days': result.get('forecast_3days', {}),
+            'decision_explanation': result.get('explanation', {}),
+            'historical_comparison': result.get('historical_comparison', {}),
+            'feature_importance': result.get('feature_importance', []),
+            'metadata': {
+                'calculation_date': datetime.now().isoformat(),
+                'data_period': data_period,
+                'forecast_period': forecast_period,
+                'algorithm_version': '1.0.0',
+                'model_type': model_used
+            }
+        }
+
+        return jsonify(response)
+
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'error': f'Errore durante predizione: {str(e)}',
+            'traceback': traceback.format_exc()
+        }), 500
+
+
+@app.route('/analytics', methods=['GET'])
+def analytics():
+    """
+    Return data for charts and analytics
+    """
+    try:
+        if data_store['loader'] is None:
+            return jsonify({
+                'success': False,
+                'error': 'Nessun dato caricato'
+            }), 400
+
+        loader = data_store['loader']
+        merged_df = loader.get_merged_data()
+
+        # Prepare time series data
+        merged_df['date_str'] = pd.to_datetime(merged_df['day']).dt.strftime('%Y-%m-%d')
+
+        # Soil moisture trend
+        sm_trend = {
+            'dates': merged_df['date_str'].tolist(),
+            'sm1': merged_df['sm1'].fillna(0).tolist(),
+            'sm2': merged_df['sm2'].fillna(0).tolist(),
+            'avg': ((merged_df['sm1'].fillna(0) + merged_df['sm2'].fillna(0)) / 2).tolist()
+        }
+
+        # Irrigation history
+        tfm1_vals = merged_df['tfm1'].fillna(0).values
+        daily_irrigation = np.diff(tfm1_vals)
+        daily_irrigation = np.maximum(daily_irrigation, 0)
+        daily_irrigation_mm = daily_irrigation / 1000  # Convert to mm (approximation)
+
+        irrigation_history = {
+            'dates': merged_df['date_str'].tolist()[1:],  # Skip first day
+            'values': daily_irrigation_mm.tolist()
+        }
+
+        # Weather data
+        weather_data = {
+            'dates': merged_df['date_str'].tolist(),
+            'precipitation': merged_df['precipitation'].fillna(0).tolist(),
+            'temperature': merged_df['airtemperaturemean'].fillna(0).tolist()
+        }
+
+        # Feature importance (if model trained)
+        feature_importance_data = []
+        if data_store['ml_model'] is not None:
+            fi = data_store['ml_model'].feature_importance.head(10)
+            feature_importance_data = fi.to_dict('records')
+
+        return jsonify({
+            'success': True,
+            'soil_moisture_trend': sm_trend,
+            'irrigation_history': irrigation_history,
+            'weather_data': weather_data,
+            'feature_importance': feature_importance_data
+        })
+
+    except Exception as e:
+        import traceback
+        return jsonify({
+            'success': False,
+            'error': f'Errore durante analisi: {str(e)}',
+            'traceback': traceback.format_exc()
+        }), 500
+
+
+@app.route('/health', methods=['GET'])
+def health():
+    """Health check endpoint"""
+    return jsonify({
+        'status': 'healthy',
+        'timestamp': datetime.now().isoformat(),
+        'data_loaded': data_store['loader'] is not None,
+        'model_trained': data_store['trained']
+    })
+
+
+if __name__ == '__main__':
+    print("=" * 60)
+    print("🌱 BLUETENTACLES AI - Irrigation Optimization System")
+    print("=" * 60)
+    print(f"Server starting on http://localhost:5000")
+    print("Upload your data files to get started!")
+    print("=" * 60)
+
+    app.run(debug=True, host='0.0.0.0', port=5000)
