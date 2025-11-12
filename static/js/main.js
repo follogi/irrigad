@@ -270,7 +270,7 @@ function displayPredictionResults(result) {
 
     // Feature importance
     if (result.feature_importance) {
-        displayFeatureImportance(result.feature_importance);
+        renderFeatureImportanceChart(result.feature_importance);
     }
 }
 
