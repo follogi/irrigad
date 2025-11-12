@@ -63,6 +63,9 @@ class MLPredictor:
         # Train
         self.model.fit(X_train, y_train)
 
+        print(f"🔍 Training shape: {X_train.shape}")
+        print(f"🔍 Feature names: {len(self.feature_names)}")
+
         # Evaluate
         y_pred_train = self.model.predict(X_train)
         y_pred_test = self.model.predict(X_test)
@@ -356,12 +359,12 @@ class MLPredictor:
 
         # Decision steps
         steps = [
-            f"1. Analisi storica: media irrigazione {hist_avg_7d:.1f} mm/giorno ultimi 7 giorni",
-            f"2. Deficit idrico previsto: {et0:.2f}mm (ET0) - {rain:.2f}mm (pioggia) = {et0 - rain:.2f}mm",
-            f"3. Correzione umidità suolo: {soil_moisture:.1f}% vs 40% target",
-            f"4. Modello ML analizza 17+ features storiche e previsionali",
-            f"5. Fattori climatici: VPD, radiazione solare, trend umidità",
-            f"6. TOTALE RACCOMANDATO: {water_mm:.1f}mm"
+            f"Analisi storica: media irrigazione {hist_avg_7d:.1f} mm/giorno ultimi 7 giorni",
+            f"Deficit idrico previsto: {et0:.2f}mm (ET0) - {rain:.2f}mm (pioggia) = {et0 - rain:.2f}mm",
+            f"Correzione umidità suolo: {soil_moisture:.1f}% vs 40% target",
+            f"Modello ML analizza 17+ features storiche e previsionali",
+            f"Fattori climatici: VPD, radiazione solare, trend umidità",
+            f"TOTALE RACCOMANDATO: {water_mm:.1f}mm"
         ]
 
         # Key factors

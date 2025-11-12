@@ -45,7 +45,7 @@ app.secret_key = 'irrigad-ai-secret-key-2025'  # Change in production
 CORS(app)
 
 # Configuration
-UPLOAD_FOLDER = 'data/uploads'
+UPLOAD_FOLDER = 'venv/data/uploads'
 ALLOWED_EXTENSIONS = {'csv', 'json'}
 MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB (increased for large CSV files)
 
