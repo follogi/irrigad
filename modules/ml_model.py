@@ -51,11 +51,31 @@ class MLPredictor:
         )
 
         # Initialize model
+        # self.model = RandomForestRegressor(
+        #     n_estimators=100,
+        #     max_depth=15,
+        #     min_samples_split=5,
+        #     min_samples_leaf=2,
+        #     random_state=42,
+        #     n_jobs=-1
+        # )
+
+        # R2 basso
+        # self.model = RandomForestRegressor(
+        #     n_estimators=200,       
+        #     max_depth=12,           
+        #     max_features='sqrt',    
+        #     min_samples_split=10,   
+        #     min_samples_leaf=5,     
+        #     random_state=42
+        # )
+
         self.model = RandomForestRegressor(
-            n_estimators=100,
-            max_depth=15,
-            min_samples_split=5,
-            min_samples_leaf=2,
+            n_estimators=200,       # OK - più alberi = meglio
+            max_depth=15,           # ✅ Aumentato (era 12)
+            max_features=0.7,       # ✅ 70% features invece di sqrt (~21%)
+            min_samples_split=5,    # ✅ Ridotto (era 10)
+            min_samples_leaf=2,     # ✅ Ridotto (era 5)
             random_state=42,
             n_jobs=-1
         )

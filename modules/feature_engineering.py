@@ -439,7 +439,7 @@ class FeatureEngineer:
         # SIMULATE FORECAST FEATURES using actual future weather data
         # This ensures training features match prediction features exactly
         if merged_df is not None:
-            train_df = self.add_forecast_features(train_df, merged_df)
+            train_df = self._add_simulated_forecast_features(train_df, merged_df)
 
         # Drop non-feature columns
         feature_cols = [col for col in train_df.columns

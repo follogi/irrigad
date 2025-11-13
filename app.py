@@ -230,7 +230,10 @@ def train_model():
         print(f"\n{'='*60}")
         print(f"TRAINING - Feature count: {len(X.columns)}")
         print(f"Feature names: {list(X.columns)}")
+        print("Max value for each feature column:")
+        print(X.max())
         print(f"{'='*60}\n")
+        # Print max value for each column
 
         if len(X) < 30:
             return jsonify({

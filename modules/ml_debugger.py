@@ -241,7 +241,7 @@ class MLDebugger:
         # Conversione: 1 mm su 10 ha = 100 m³
         # Quindi: mm = m³ / 100
         avg_irrigation_m3 = features.get('irrigation_avg_14d', 0)
-        avg_irrigation_mm = avg_irrigation_m3 / 100.0  # Converti m³ → mm (per 10 ha)
+        avg_irrigation_mm = avg_irrigation_m3 / 1000  # Converti m³ → mm (per 10 ha)
 
         if avg_irrigation_mm > 0 and abs(prediction - avg_irrigation_mm) < 0.01:
             result['issues'].append({
