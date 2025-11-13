@@ -19,6 +19,84 @@ class FeatureEngineer:
         self.features_df = None
         self.target_series = None
 
+    @staticmethod
+    def calculate_et0_fao56(temp_mean, temp_min, temp_max, rh_mean, solar_radiation, wind_speed=2.0):
+        """
+        Calculate ET0 using simplified FAO-56 Penman-Monteith equation
+
+        Args:
+            temp_mean: Mean temperature (°C)
+            temp_min: Minimum temperature (°C)
+            temp_max: Maximum temperature (°C)
+            rh_mean: Mean relative humidity (%)
+            solar_radiation: Solar radiation (W/m²)
+            wind_speed: Wind speed at 2m height (m/s), default 2.0
+
+        Returns:
+            ET0 in mm/day
+        """
+        # Constants
+        LAT = 45.0  # Approximate latitude (adjust based on location)
+        ALTITUDE = 100  # meters above sea level
+
+        # Atmospheric pressure (kPa)
+        P = 101.3 * ((293 - 0.0065 * ALTITUDE) / 293) ** 5.26
+
+        # Psychrometric constant (kPa/°C)
+        gamma = 0.000665 * P
+
+        # Saturation vapor pressure (kPa)
+        es_tmax = 0.6108 * np.exp((17.27 * temp_max) / (temp_max + 237.3))
+        es_tmin = 0.6108 * np.exp((17.27 * temp_min) / (temp_min + 237.3))
+        es = (es_tmax + es_tmin) / 2.0
+
+        # Actual vapor pressure (kPa)
+        ea = es * (rh_mean / 100.0)
+
+        # Slope of saturation vapor pressure curve (kPa/°C)
+        delta = (4098 * es) / ((temp_mean + 237.3) ** 2)
+
+        # Convert solar radiation from W/m² to MJ/m²/day
+        # W/m² * 86400 s/day / 1000000 = MJ/m²/day
+        Rs = solar_radiation * 0.0864
+
+        # Net radiation (simplified, assuming Rn ≈ 0.77 * Rs - 0.5)
+        Rn = max(0, 0.77 * Rs - 0.5)
+
+        # Soil heat flux (negligible for daily calculations)
+        G = 0
+
+        # ET0 calculation (mm/day)
+        numerator = 0.408 * delta * (Rn - G) + gamma * (900 / (temp_mean + 273)) * wind_speed * (es - ea)
+        denominator = delta + gamma * (1 + 0.34 * wind_speed)
+
+        et0 = numerator / denominator
+
+        return max(0, et0)  # No negative ET0
+
+    @staticmethod
+    def calculate_vpd(temp_mean, rh_mean):
+        """
+        Calculate Vapor Pressure Deficit (VPD)
+
+        Args:
+            temp_mean: Mean temperature (°C)
+            rh_mean: Relative humidity (%)
+
+        Returns:
+            VPD in kPa
+        """
+        # Saturation vapor pressure (kPa)
+        es = 0.6108 * np.exp((17.27 * temp_mean) / (temp_mean + 237.3))
+
+        # Actual vapor pressure (kPa)
+        ea = es * (rh_mean / 100.0)
+
+        # VPD
+        vpd = es - ea
+
+        return max(0, vpd)
+
     def extract_features(self, merged_df: pd.DataFrame, forecast_data: Dict = None) -> pd.DataFrame:
         """
         Extract all features from merged sensor data
@@ -280,6 +358,7 @@ class FeatureEngineer:
             next_3_days = merged_df.iloc[current_idx + 1:current_idx + 4]
 
             if len(next_3_days) >= 1:  # At least 1 day ahead
+                # ========== PRECIPITATION ==========
                 # Sum precipitation over next 3 days + REALISTIC ERROR
                 if 'precipitation' in next_3_days.columns:
                     actual_precip = next_3_days['precipitation'].fillna(0).sum()
@@ -289,38 +368,65 @@ class FeatureEngineer:
                     forecast_precip = max(0, actual_precip + error_mm)
                     train_df.loc[idx, 'forecast_precipitation_3d'] = forecast_precip
 
-                # Calculate ET0 from temperature + REALISTIC ERROR
-                if 'airtemperaturemean' in next_3_days.columns:
-                    temp_mean = next_3_days['airtemperaturemean'].fillna(15)
-                    # Add ±2°C temperature error
-                    temp_error = np.random.uniform(-2, 2)
-                    temp_with_error = temp_mean + temp_error
-                    # Rough ET0 estimation: ~0.15-0.20 mm/day per degree above 10°C
-                    et0_daily = (temp_with_error - 10) * 0.2
-                    et0_daily = et0_daily.clip(lower=0)  # No negative ET0
-                    actual_et0 = et0_daily.sum()
-                    # Add ±20% ET0 error
-                    et0_error = np.random.uniform(-0.2, 0.2)
-                    forecast_et0 = max(0, actual_et0 * (1 + et0_error))
-                    train_df.loc[idx, 'forecast_et0_3d'] = forecast_et0
+                # ========== ET0 USANDO DATI REALI E FORMULA FAO-56 ==========
+                # Calculate ET0 using REAL meteorological data and FAO-56 equation
+                et0_sum = 0.0
+                vpd_list = []
 
-                # Max VPD + REALISTIC ERROR
-                if 'relativehumiditymean' in next_3_days.columns:
-                    # VPD approximation (simplified)
-                    rh = next_3_days['relativehumiditymean'].fillna(70)
-                    # Add ±10% humidity error
+                for day_idx in range(len(next_3_days)):
+                    day_row = next_3_days.iloc[day_idx]
+
+                    # Extract REAL meteorological data
+                    temp_mean = day_row.get('airtemperaturemean', 15.0)
+                    temp_min = day_row.get('airtemperaturemin', temp_mean - 5)
+                    temp_max = day_row.get('airtemperaturemax', temp_mean + 5)
+                    rh_mean = day_row.get('relativehumiditymean', 70.0)
+                    solar_rad = day_row.get('solarradiation', 200.0)
+                    wind_speed = day_row.get('windspeedmean', 2.0)
+
+                    # Add realistic forecast errors to meteorological data
+                    temp_error = np.random.uniform(-2, 2)
+                    temp_mean_forecast = temp_mean + temp_error
+                    temp_min_forecast = temp_min + temp_error
+                    temp_max_forecast = temp_max + temp_error
+
                     rh_error = np.random.uniform(-10, 10)
-                    rh_with_error = (rh + rh_error).clip(0, 100)
-                    vpd_approx = (100 - rh_with_error) / 10.0  # Rough estimate
-                    train_df.loc[idx, 'forecast_vpd_max'] = vpd_approx.max()
+                    rh_forecast = np.clip(rh_mean + rh_error, 0, 100)
 
-                # Min temperature + REALISTIC ERROR
-                if 'airtemperaturemean' in next_3_days.columns:
-                    # Use mean temp as proxy for min (we don't have actual min/max in data)
+                    solar_error = np.random.uniform(-0.15, 0.15)
+                    solar_forecast = max(0, solar_rad * (1 + solar_error))
+
+                    wind_error = np.random.uniform(-0.3, 0.3)
+                    wind_forecast = max(0.1, wind_speed * (1 + wind_error))
+
+                    # Calculate ET0 using FAO-56 with REAL data + realistic errors
+                    et0_day = self.calculate_et0_fao56(
+                        temp_mean_forecast, temp_min_forecast, temp_max_forecast,
+                        rh_forecast, solar_forecast, wind_forecast
+                    )
+                    et0_sum += et0_day
+
+                    # Calculate VPD
+                    vpd_day = self.calculate_vpd(temp_mean_forecast, rh_forecast)
+                    vpd_list.append(vpd_day)
+
+                train_df.loc[idx, 'forecast_et0_3d'] = et0_sum
+
+                # ========== VPD MAX ==========
+                if len(vpd_list) > 0:
+                    train_df.loc[idx, 'forecast_vpd_max'] = max(vpd_list)
+
+                # ========== TEMPERATURE MIN ==========
+                # Use REAL airtemperaturemin if available
+                if 'airtemperaturemin' in next_3_days.columns:
+                    actual_temp_min = next_3_days['airtemperaturemin'].fillna(10).min()
+                else:
+                    # Fallback: estimate from mean
                     actual_temp_min = next_3_days['airtemperaturemean'].fillna(10).min() - 5
-                    # Add ±2°C error
-                    temp_error = np.random.uniform(-2, 2)
-                    train_df.loc[idx, 'forecast_temp_min'] = actual_temp_min + temp_error
+
+                # Add ±2°C forecast error
+                temp_error = np.random.uniform(-2, 2)
+                train_df.loc[idx, 'forecast_temp_min'] = actual_temp_min + temp_error
 
                 # Water deficit
                 train_df.loc[idx, 'water_deficit'] = \
