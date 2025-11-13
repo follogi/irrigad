@@ -9,6 +9,7 @@ from typing import Dict, Any, Tuple, Optional
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
+from sklearn.preprocessing import StandardScaler
 import pickle
 import os
 
@@ -26,7 +27,7 @@ class MLPredictor:
         self.feature_names = None
         self.feature_importance = None
         self.training_metrics = None
-        self.scaler = None
+        self.scaler = StandardScaler()  # Feature scaling per equalizzare le scale
 
     def train(self, X: pd.DataFrame, y: pd.Series) -> Dict[str, Any]:
         """
@@ -49,6 +50,30 @@ class MLPredictor:
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.2, random_state=42
         )
+
+        # ========== FEATURE SCALING ==========
+        # Scala features per equalizzare le scale (irrigation_7d: 0-17k vs vpd: 0-1.5)
+        X_train_scaled = self.scaler.fit_transform(X_train)
+        X_test_scaled = self.scaler.transform(X_test)
+
+        # Log effetto scaling
+        print(f"\n{'='*60}")
+        print(f"📊 FEATURE SCALING APPLICATO:")
+
+        # Trova indice di irrigation_7d (feature con valore grande)
+        if 'irrigation_7d' in self.feature_names:
+            irr_idx = self.feature_names.index('irrigation_7d')
+            print(f"   irrigation_7d PRIMA:  max = {X_train.iloc[:, irr_idx].max():.0f} m³")
+            print(f"   irrigation_7d DOPO:   max = {X_train_scaled[:, irr_idx].max():.2f} (normalizzato)")
+
+        # Trova indice di forecast_et0_3d (feature con valore piccolo)
+        if 'forecast_et0_3d' in self.feature_names:
+            et0_idx = self.feature_names.index('forecast_et0_3d')
+            print(f"   forecast_et0_3d PRIMA: max = {X_train.iloc[:, et0_idx].max():.2f} mm")
+            print(f"   forecast_et0_3d DOPO:  max = {X_train_scaled[:, et0_idx].max():.2f} (normalizzato)")
+
+        print(f"   ✅ Tutte le features ora hanno scala simile (media≈0, std≈1)")
+        print(f"{'='*60}\n")
 
         # Initialize model
         # self.model = RandomForestRegressor(
@@ -80,15 +105,15 @@ class MLPredictor:
             n_jobs=-1
         )
 
-        # Train
-        self.model.fit(X_train, y_train)
+        # Train su dati SCALATI
+        self.model.fit(X_train_scaled, y_train)
 
-        print(f"🔍 Training shape: {X_train.shape}")
+        print(f"🔍 Training shape: {X_train_scaled.shape}")
         print(f"🔍 Feature names: {len(self.feature_names)}")
 
-        # Evaluate
-        y_pred_train = self.model.predict(X_train)
-        y_pred_test = self.model.predict(X_test)
+        # Evaluate su dati SCALATI
+        y_pred_train = self.model.predict(X_train_scaled)
+        y_pred_test = self.model.predict(X_test_scaled)
 
         # Metrics
         train_r2 = r2_score(y_train, y_pred_train)
@@ -112,6 +137,16 @@ class MLPredictor:
             'total_samples': len(X)
         }
 
+        # Verifica scaler
+        print(f"\n✅ VERIFICA SCALING:")
+        print(f"   Scaler fitted: {hasattr(self.scaler, 'mean_')}")
+        if hasattr(self.scaler, 'mean_'):
+            print(f"   Scaler mean shape: {self.scaler.mean_.shape}")
+            print(f"   Scaler scale shape: {self.scaler.scale_.shape}")
+            print(f"   ✅ Scaler correttamente fitted su {len(self.feature_names)} features")
+        else:
+            print(f"   ❌ ERRORE: Scaler NON fitted!")
+
         return self.training_metrics
 
     def predict(self, features: pd.Series, forecast_data: Dict,
@@ -133,8 +168,15 @@ class MLPredictor:
         # Ensure features are in correct order
         X_pred = features[self.feature_names].values.reshape(1, -1)
 
-        # Predict
-        water_m3 = self.model.predict(X_pred)[0]
+        # ========== SCALA FEATURES PRIMA DELLA PREDIZIONE ==========
+        # CRITICO: Deve usare STESSO scaler del training
+        if not hasattr(self.scaler, 'mean_'):
+            raise ValueError("Scaler not fitted! Model was not properly trained.")
+
+        X_pred_scaled = self.scaler.transform(X_pred)
+
+        # Predict su dati SCALATI
+        water_m3 = self.model.predict(X_pred_scaled)[0]
         water_m3 = max(0, water_m3)  # No negative irrigation
 
         # Convert to mm
