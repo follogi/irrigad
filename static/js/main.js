@@ -198,7 +198,7 @@ async function handlePredict() {
             });
 
         } else {
-            showStatus('danger', 'Errore durante predizione: ' + result.error);
+            showStatus('danger', result.error);
         }
 
     } catch (error) {

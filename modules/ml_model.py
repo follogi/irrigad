@@ -176,8 +176,16 @@ class MLPredictor:
         X_pred_scaled = self.scaler.transform(X_pred)
 
         # Predict su dati SCALATI
-        water_m3 = self.model.predict(X_pred_scaled)[0]
-        water_m3 = max(0, water_m3)  # No negative irrigation
+        water_m3_ml = self.model.predict(X_pred_scaled)[0]
+        water_m3_ml = max(0, water_m3_ml)  # No negative irrigation
+
+        water_m3, explanation = self.apply_hybrid_correction(
+            water_m3_ml, 
+            features.to_dict(), 
+            forecast_data
+        )
+
+        print(f"🔄 {explanation}")
 
         # Convert to mm
         water_mm = water_m3 / (self.FIELD_AREA_HA * 100)
@@ -553,3 +561,99 @@ class MLPredictor:
         self.feature_names = model_data['feature_names']
         self.feature_importance = model_data['feature_importance']
         self.training_metrics = model_data['training_metrics']
+
+    def apply_hybrid_correction(self, ml_prediction_m3, features, forecast):
+        """
+        Combina predizione ML con regole FAO-56
+        
+        Args:
+            ml_prediction_m3: Predizione ML in m³
+            features: Dict con features
+            forecast: Dict con forecast (supporta sia formato raw che processato)
+        """
+        
+        # ✅ Gestisci entrambi i formati
+        if 'daily' in forecast:
+            # Formato RAW dall'API
+            daily = forecast['daily']
+            et0 = sum(daily['et0_fao_evapotranspiration'][:3])
+            rain = sum(daily['precipitation_sum'][:3])
+            vpd_max = max(daily['vapor_pressure_deficit_max'][:3])
+            temp_min = min(daily['temperature_2m_min'][:3])
+        else:
+            # Formato processato
+            et0 = forecast.get('et0_sum', 3.0)
+            rain = forecast.get('precipitation_sum', 0)
+            vpd_max = forecast.get('vpd_max', 1.0)
+            temp_min = forecast.get('temp_min', 20.0)
+        
+        # Estrai da features
+        soil_moisture = features.get('avg_soil_moisture', 35)
+        irrigation_7d = features.get('irrigation_7d', 0)
+        
+        print(f"\n🔄 CORREZIONE IBRIDA:")
+        print(f"   ET0: {et0:.2f}mm, Pioggia: {rain:.2f}mm")
+        print(f"   Soil: {soil_moisture:.1f}%, Irrig_7d: {irrigation_7d:.0f}m³")
+        
+        # Calcola con regole FAO-56
+        water_deficit = et0 - rain
+        
+        # Fattore umidità suolo
+        if soil_moisture < 25:
+            moisture_factor = 2.0
+        elif soil_moisture < 30:
+            moisture_factor = 1.5
+        elif soil_moisture < 35:
+            moisture_factor = 1.2
+        elif soil_moisture < 40:
+            moisture_factor = 1.0
+        else:
+            moisture_factor = 0.7
+        
+        # Calcola mm necessari
+        rules_water_mm = water_deficit * moisture_factor
+        rules_water_mm = max(0, min(20, rules_water_mm))
+        rules_water_m3 = rules_water_mm * 100
+        
+        # Determina peso ML vs Regole
+        if et0 > 8.0:
+            weight_ml = 0.3
+            reason = f"ET0 fuori range ({et0:.1f}>8.0)"
+        elif et0 > 7.0:
+            weight_ml = 0.4
+            reason = f"ET0 alto ({et0:.1f})"
+        elif irrigation_7d > 7000:
+            weight_ml = 0.7
+            reason = f"Irrigazione recente alta ({irrigation_7d:.0f}m³)"
+        else:
+            weight_ml = 0.5
+            reason = "Condizioni normali"
+        
+        # Override pioggia abbondante
+        if rain > 30:
+            print(f"   ⚠️ Override: Pioggia abbondante ({rain:.1f}mm)")
+            return 0, "Override: pioggia abbondante prevista"
+        
+        # Combinazione pesata
+        weight_rules = 1 - weight_ml
+        final_m3 = ml_prediction_m3 * weight_ml + rules_water_m3 * weight_rules
+        
+        # Limiti sicurezza
+        final_m3 = max(0, min(2500, final_m3))
+        
+        # Spiega decisione
+        ml_mm = ml_prediction_m3 / 100
+        final_mm = final_m3 / 100
+        
+        explanation = (
+            f"ML:{ml_mm:.1f}mm×{weight_ml:.0%} + "
+            f"Regole:{rules_water_mm:.1f}mm×{weight_rules:.0%} = "
+            f"{final_mm:.1f}mm ({reason})"
+        )
+        
+        print(f"   ML pura: {ml_mm:.1f}mm")
+        print(f"   Regole FAO-56: {rules_water_mm:.1f}mm")
+        print(f"   Peso: ML {weight_ml:.0%} / Regole {weight_rules:.0%}")
+        print(f"   → Finale: {final_mm:.1f}mm")
+        
+        return final_m3, explanation
