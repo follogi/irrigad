@@ -312,26 +312,19 @@ class FeatureEngineer:
     def _add_simulated_forecast_features(self, train_df: pd.DataFrame,
                                          merged_df: pd.DataFrame) -> pd.DataFrame:
         """
-        Simulate forecast features for training using actual future weather data
-        with realistic forecast errors.
+        Add forecast features for training using actual future weather data.
 
-        For each training sample, we look at the ACTUAL weather data from the
-        next 3 days and use it as "forecast" data, BUT we add realistic noise
-        to simulate forecast inaccuracy. This ensures the model learns that
-        forecast features are INFORMATIVE but not PERFECT.
-
-        Realistic forecast errors (based on meteorological accuracy):
-        - Precipitation: ±30% or ±5mm (whichever is larger)
-        - Temperature: ±2°C
-        - ET0: ±20%
-        - Humidity/VPD: ±10%
+        For each training sample, we use the ACTUAL weather data from the
+        next 3 days and calculate REAL ET0, VPD, etc. using FAO-56 formulas.
+        This ensures the model learns the true relationship between weather
+        conditions and irrigation needs.
 
         Args:
             train_df: Training dataframe with historical features
             merged_df: Full merged data with weather information
 
         Returns:
-            Training dataframe with added forecast features (with realistic noise)
+            Training dataframe with added forecast features (calculated from real data)
         """
         # Initialize forecast feature columns
         train_df['forecast_precipitation_3d'] = 0.0
@@ -340,7 +333,7 @@ class FeatureEngineer:
         train_df['forecast_temp_min'] = 10.0
         train_df['water_deficit'] = 0.0
 
-        # For each training sample, simulate forecast using next 3 days actual data
+        # For each training sample, use next 3 days actual data
         for idx in train_df.index:
             if 'date' not in train_df.columns:
                 continue
@@ -354,24 +347,19 @@ class FeatureEngineer:
 
             current_idx = merged_df[date_mask].index[0]
 
-            # Get next 3 days of actual weather data (simulate "forecast")
+            # Get next 3 days of actual weather data
             next_3_days = merged_df.iloc[current_idx + 1:current_idx + 4]
 
             if len(next_3_days) >= 1:  # At least 1 day ahead
-                # ========== PRECIPITATION ==========
-                # Sum precipitation over next 3 days + REALISTIC ERROR
+                # ========== PRECIPITATION (REAL) ==========
                 if 'precipitation' in next_3_days.columns:
-                    actual_precip = next_3_days['precipitation'].fillna(0).sum()
-                    # Add ±30% error or ±5mm (whichever is larger)
-                    error_pct = np.random.uniform(-0.3, 0.3)
-                    error_mm = max(abs(actual_precip * error_pct), np.random.uniform(-5, 5))
-                    forecast_precip = max(0, actual_precip + error_mm)
-                    train_df.loc[idx, 'forecast_precipitation_3d'] = forecast_precip
+                    train_df.loc[idx, 'forecast_precipitation_3d'] = \
+                        next_3_days['precipitation'].fillna(0).sum()
 
-                # ========== ET0 USANDO DATI REALI E FORMULA FAO-56 ==========
-                # Calculate ET0 using REAL meteorological data and FAO-56 equation
+                # ========== ET0 USING REAL DATA AND FAO-56 FORMULA ==========
                 et0_sum = 0.0
                 vpd_list = []
+                temp_min_list = []
 
                 for day_idx in range(len(next_3_days)):
                     day_row = next_3_days.iloc[day_idx]
@@ -384,60 +372,40 @@ class FeatureEngineer:
                     solar_rad = day_row.get('solarradiation', 200.0)
                     wind_speed = day_row.get('windspeedmean', 2.0)
 
-                    # Add realistic forecast errors to meteorological data
-                    temp_error = np.random.uniform(-2, 2)
-                    temp_mean_forecast = temp_mean + temp_error
-                    temp_min_forecast = temp_min + temp_error
-                    temp_max_forecast = temp_max + temp_error
-
-                    rh_error = np.random.uniform(-10, 10)
-                    rh_forecast = np.clip(rh_mean + rh_error, 0, 100)
-
-                    solar_error = np.random.uniform(-0.15, 0.15)
-                    solar_forecast = max(0, solar_rad * (1 + solar_error))
-
-                    wind_error = np.random.uniform(-0.3, 0.3)
-                    wind_forecast = max(0.1, wind_speed * (1 + wind_error))
-
-                    # Calculate ET0 using FAO-56 with REAL data + realistic errors
+                    # Calculate ET0 using FAO-56 with REAL data
                     et0_day = self.calculate_et0_fao56(
-                        temp_mean_forecast, temp_min_forecast, temp_max_forecast,
-                        rh_forecast, solar_forecast, wind_forecast
+                        temp_mean, temp_min, temp_max,
+                        rh_mean, solar_rad, wind_speed
                     )
                     et0_sum += et0_day
 
                     # Calculate VPD
-                    vpd_day = self.calculate_vpd(temp_mean_forecast, rh_forecast)
+                    vpd_day = self.calculate_vpd(temp_mean, rh_mean)
                     vpd_list.append(vpd_day)
+
+                    # Collect temp min
+                    temp_min_list.append(temp_min)
 
                 train_df.loc[idx, 'forecast_et0_3d'] = et0_sum
 
-                # ========== VPD MAX ==========
+                # ========== VPD MAX (REAL) ==========
                 if len(vpd_list) > 0:
                     train_df.loc[idx, 'forecast_vpd_max'] = max(vpd_list)
 
-                # ========== TEMPERATURE MIN ==========
-                # Use REAL airtemperaturemin if available
-                if 'airtemperaturemin' in next_3_days.columns:
-                    actual_temp_min = next_3_days['airtemperaturemin'].fillna(10).min()
-                else:
-                    # Fallback: estimate from mean
-                    actual_temp_min = next_3_days['airtemperaturemean'].fillna(10).min() - 5
+                # ========== TEMPERATURE MIN (REAL) ==========
+                if len(temp_min_list) > 0:
+                    train_df.loc[idx, 'forecast_temp_min'] = min(temp_min_list)
 
-                # Add ±2°C forecast error
-                temp_error = np.random.uniform(-2, 2)
-                train_df.loc[idx, 'forecast_temp_min'] = actual_temp_min + temp_error
-
-                # Water deficit
+                # ========== WATER DEFICIT ==========
                 train_df.loc[idx, 'water_deficit'] = \
                     train_df.loc[idx, 'forecast_et0_3d'] - \
                     train_df.loc[idx, 'forecast_precipitation_3d']
 
-        # Log forecast feature statistics to verify variance
+        # Log forecast feature statistics
         forecast_cols = ['forecast_precipitation_3d', 'forecast_et0_3d',
                         'forecast_vpd_max', 'forecast_temp_min', 'water_deficit']
         print(f"\n{'='*60}")
-        print(f"FORECAST FEATURES STATISTICS (with realistic errors):")
+        print(f"FORECAST FEATURES STATISTICS (calculated from real data):")
         for col in forecast_cols:
             if col in train_df.columns:
                 mean_val = train_df[col].mean()
