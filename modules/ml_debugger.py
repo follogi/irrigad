@@ -237,12 +237,17 @@ class MLDebugger:
             })
 
         # Check 3: Predizione costante (sempre stesso valore)
-        avg_irrigation = features.get('irrigation_avg_14d', 0)
-        if avg_irrigation > 0 and abs(prediction - avg_irrigation) < 0.01:
+        # NOTA: irrigation_avg_14d è in m³/giorno, prediction è in mm
+        # Conversione: 1 mm su 10 ha = 100 m³
+        # Quindi: mm = m³ / 100
+        avg_irrigation_m3 = features.get('irrigation_avg_14d', 0)
+        avg_irrigation_mm = avg_irrigation_m3 / 100.0  # Converti m³ → mm (per 10 ha)
+
+        if avg_irrigation_mm > 0 and abs(prediction - avg_irrigation_mm) < 0.01:
             result['issues'].append({
                 'type': 'constant_prediction',
                 'severity': 'critical',
-                'message': f"Predizione identica alla media storica ({avg_irrigation:.2f}mm). "
+                'message': f"Predizione identica alla media storica ({avg_irrigation_mm:.2f}mm = {avg_irrigation_m3:.1f}m³). "
                           f"Il modello potrebbe non usare le features!"
             })
 
