@@ -120,6 +120,34 @@ class MLPredictor:
         # Convert to mm
         water_mm = water_m3 / (self.FIELD_AREA_HA * 100)
 
+        print("\n🔍 TEST SENSIBILITÀ FORECAST:")
+
+        # Test 1: Raddoppia ET0
+        X_test = X_pred.copy()
+        X_test[0, 18] = X_pred[0, 18] * 2  # forecast_et0_3d × 2
+        water_test = self.model.predict(X_test)[0]
+        print(f"ET0 normale ({X_pred[0, 18]:.1f}mm): {water_m3:.1f} m³")
+        print(f"ET0 doppio ({X_test[0, 18]:.1f}mm):  {water_test:.1f} m³")
+        delta = abs(water_test - water_m3)
+        print(f"Differenza: {delta:.1f} m³")
+
+        if delta < 10:
+            print("❌ PROBLEMA: Modello NON reagisce a cambio ET0!")
+        else:
+            print("✅ OK: Modello sensibile a ET0")
+
+        # Test 2: Aggiungi pioggia
+        X_test2 = X_pred.copy()
+        X_test2[0, 17] = 50.0  # forecast_precipitation_3d = 50mm
+        water_test2 = self.model.predict(X_test2)[0]
+        print(f"\nPioggia 0mm: {water_m3:.1f} m³")
+        print(f"Pioggia 50mm: {water_test2:.1f} m³")
+
+        if abs(water_test2 - water_m3) < 10:
+            print("❌ PROBLEMA: Modello NON reagisce a pioggia!")
+        else:
+            print("✅ OK: Modello sensibile a pioggia")
+
         # Calculate confidence and priority
         confidence = self._calculate_confidence(features)
         priority = self._calculate_priority(features, water_mm)
