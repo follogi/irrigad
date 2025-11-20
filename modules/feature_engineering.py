@@ -386,7 +386,6 @@ class FeatureEngineer:
                     # Collect temp min
                     temp_min_list.append(temp_min)
 
-                train_df.loc[idx, 'forecast_et0_3d'] = et0_sum
 
                 # ========== VPD MAX (REAL) ==========
                 if len(vpd_list) > 0:
